@@ -572,6 +572,8 @@ void TACSJacobiDavidson::solve( KSMPrint *ksm_print, int print_level ){
     ksm_print->print(line);
   }
 
+  // We expand the dimension of subspace by 1 for each
+  // for-loop iteration until reach m
   for ( int k = kstart; k < m; k++ ){
     // Orthogonalize against converged eigenvectors as well (if any)...
     for ( int i = 0; i < nconverged; i++ ){
@@ -630,7 +632,10 @@ void TACSJacobiDavidson::solve( KSMPrint *ksm_print, int print_level ){
     // has not yet converged
     double theta = ritzvals[0];
 
-    int num_new_eigvals = 0;
+    // Now we loop over the solution space to the small eigenvalue
+    // problem to see if there is any converged eigenpair.
+    int num_new_eigvals = 0;  // Number of solutions to the smalleigenvalue problem
+                              // that has been evaluated
     for ( int i = 0; i < k+1 && nconverged < max_eigen_vectors;
           i++, num_new_eigvals++ ){
       // Set the Ritz value
@@ -643,9 +648,10 @@ void TACSJacobiDavidson::solve( KSMPrint *ksm_print, int print_level ){
       }
       oper->applyBCs(Q[nconverged]);
 
-      // Normalize the predicted eigenvalue
+      // Normalize the predicted Ritz vector
       TacsScalar qnorm = sqrt(oper->dot(Q[nconverged], Q[nconverged]));
-      Q[nconverged]->scale(1.0/qnorm);
+      Q[nconverged]->scale(1.0/qnorm); // Note that Q[nconverged] does not become
+                                       // the converged eigenvector yet!
 
       // Compute the residual: work = A*q - theta*B*q
       // and store it in the work vector
@@ -670,6 +676,8 @@ void TACSJacobiDavidson::solve( KSMPrint *ksm_print, int print_level ){
         ksm_print->print(line);
       }
 
+      // We register the converged Ritz pairs as eigenpairs one
+      // by one until the tolerance check fails
       if (TacsRealPart(w_norm) <= toler){
         // Record the Ritz value as the eigenvalue
         eigvals[nconverged] = theta;
@@ -688,6 +696,14 @@ void TACSJacobiDavidson::solve( KSMPrint *ksm_print, int print_level ){
       break;
     }
 
+    // TODO: add option to c++ and python layer to switch on or off
+    // deflation
+
+    /*
+    Temporarily switch off deflation
+    */
+
+    #if 0
     if (num_new_eigvals > 0){
       // This eigenvalue has converged, store it in Q[nconverged] and
       // modify the remaining entries of V. Now we need to compute the
@@ -784,6 +800,7 @@ void TACSJacobiDavidson::solve( KSMPrint *ksm_print, int print_level ){
       // Reset the iteration loop and continue
       continue;
     }
+    #endif  // if 0
 
     // Now solve the system (K - theta*M)*t = -work
     // Keep track of the number of iterations in GMRES
