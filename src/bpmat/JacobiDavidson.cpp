@@ -632,10 +632,11 @@ void TACSJacobiDavidson::solve( KSMPrint *ksm_print, int print_level ){
     // has not yet converged
     double theta = ritzvals[0];
 
-    // Now we loop over the solution space to the small eigenvalue
-    // problem to see if there is any converged eigenpair.
-    int num_new_eigvals = 0;  // Number of solutions to the smalleigenvalue problem
-                              // that has been evaluated
+    // Next, we are going to go through each solution to the
+    // small eigenvalue problem
+    int num_new_eigvals = 0;  // Number of converged eigenvalues resigtered
+                              // during this LAPACKdsyev solve
+    // Note: the dimension of the small problem is k+1 by k+1
     for ( int i = 0; i < k+1 && nconverged < max_eigen_vectors;
           i++, num_new_eigvals++ ){
       // Set the Ritz value
@@ -696,16 +697,11 @@ void TACSJacobiDavidson::solve( KSMPrint *ksm_print, int print_level ){
       break;
     }
 
-    // TODO: add option to c++ and python layer to switch on or off
-    // deflation
-
-    /*
-    Temporarily switch off deflation
-    */
-
-    #if 0
+    // This means at least 1 iteration went through for the previous
+    // for loop, and num_new_eigvals is the number of converged eigenvalues
+    // we newly registered.
     if (num_new_eigvals > 0){
-      // This eigenvalue has converged, store it in Q[nconverged] and
+      // This eigenvalue(s) has converged, store it(them) in Q[nconverged] and
       // modify the remaining entries of V. Now we need to compute the
       // new starting vector for the next eigenvalue
 
@@ -917,6 +913,19 @@ void TACSJacobiDavidson::solve( KSMPrint *ksm_print, int print_level ){
     }
 
     iteration++;
+
+    // Print the orthogonality of t against the current search space
+    if (ksm_print && print_level > 2){
+      char line[256];
+      sprintf(line, "Checking the orthogonality of t against current search space\n");
+      ksm_print->print(line);
+      for ( int kk = 0; kk <= k; kk++ ){
+        TacsScalar ortho = oper->dot(V[kk], V[k+1]);
+        sprintf(line, "t->dot(V[%3d]) = %15.5e\n", kk, ortho);
+        ksm_print->print(line);
+      }
+    }
+
   }
 
   // Sort the indices for the converged eigenvalues
