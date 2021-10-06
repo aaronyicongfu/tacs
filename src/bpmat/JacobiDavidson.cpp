@@ -796,7 +796,6 @@ void TACSJacobiDavidson::solve( KSMPrint *ksm_print, int print_level ){
       // Reset the iteration loop and continue
       continue;
     }
-    #endif  // if 0
 
     // Now solve the system (K - theta*M)*t = -work
     // Keep track of the number of iterations in GMRES
