@@ -6,6 +6,12 @@ for a 2D plate.
 from tacs import TACS, elements, constitutive, functions
 from mpi4py import MPI
 import numpy as np
+import argparse
+
+p = argparse.ArgumentParser()
+p.add_argument('--element', type=str, default='plane', 
+    choices=['plane', 'shell'])
+args = p.parse_args()
 
 '''
 Create TACS Assembler
@@ -18,7 +24,9 @@ ny = 20  # number of elements in y direction
 Lx = 1.0
 Ly = 1.0
 varsPerNode = 2
-# varsPerNode = 3  # if we use LinearThermoelasticity2D element type
+if args.element == 'shell':
+    varsPerNode = 6
+    
 nodesPerProc = int((nx+1)*(ny+1)/size)
 elemsPerProc = int(nx*ny/size)
 numOwnedNodes = int(nodesPerProc)
@@ -72,14 +80,21 @@ props = constitutive.MaterialProperties(rho=2700.0, E=70e3, nu=0.3, ys=270.0)
 linear_basis = elements.LinearQuadBasis()
 stiff = constitutive.PlaneStressConstitutive(props)
 elements_list = []
+plate_elements = []
 for elem in range(firstElem, lastElem):
     stiff = constitutive.PlaneStressConstitutive(props, 1.0, elem)
     model = elements.LinearElasticity2D(stiff);
-    # model = elements.LinearThermoelasticity2D(stiff);
     elements_list.append(elements.Element2D(model, linear_basis))
 
+    plate_stiff = constitutive.IsoShellConstitutive(props)
+    plate_model = elements.PlateModel(plate_stiff)
+    plate_elements.append(elements.Quad4Shell(None, plate_stiff))
+
 # Set elements into the mesh
-assembler.setElements(elements_list)
+if args.element == 'plane':
+    assembler.setElements(elements_list)
+elif args.element == 'shell':
+    assembler.setElements(plate_elements)
 
 # Set boundary conditions
 for i in range(0, nx + 1):
@@ -126,7 +141,7 @@ tmp   = assembler.createVec()
 
 # Set force
 force_vals = force.getArray()
-force_vals[::3] = 1.0
+force_vals[2::3] = 1.0
 assembler.setBCs(force)
 
 # Assemble the Jacobian for the governing equation
