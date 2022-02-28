@@ -1,4 +1,5 @@
 #include "TACSMassElement.h"
+#include "TACSMassInertialForce.h"
 
 /*
   A 6 DOF point mass element
@@ -38,6 +39,10 @@ enum ElementType TACSMassElement::getElementType(){ return TACS_MASS_ELEMENT; }
   The element name, variable, stress and strain names.
 */
 const char * TACSMassElement::elemName = "TACSMassElement";
+
+TACSElement* TACSMassElement::createElementInertialForce( TacsScalar inertiaVec[] ){
+  return new TACSMassInertialForce(con, inertiaVec);
+}
 
 void TACSMassElement::computeEnergies( int elemIndex,
                                        double time,
@@ -93,12 +98,12 @@ void TACSMassElement::addJacobian( int elemIndex, double time,
   for (int j = 0; j < NUM_DISPS; j++){
     TacsScalar N[NUM_DISPS], f[NUM_DISPS];
     // Shape functions
-    memset(N, 0, 6*sizeof(TacsScalar));
+    memset(N, 0, NUM_DISPS*sizeof(TacsScalar));
     N[j] = 1.0;
     con->evalInertia(elemIndex, pt, Xpts, N, f);
     for (int i = 0; i < NUM_DISPS; i++){
       J[j + i*NUM_VARIABLES] += gamma * f[i];
-      res[j] += ddvars[j] * f[i];
+      res[i] += ddvars[j] * f[i];
     }
   }
 }

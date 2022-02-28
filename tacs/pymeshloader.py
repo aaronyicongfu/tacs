@@ -2,7 +2,7 @@
 """
 pymeshloader - A python-based mesh loader for setting up TACS
 
-This python interface is designed to provide a easier interface to the
+This python interface is designed to provide an easier interface to the
 c-layer of TACS. This module uses the pyNastran library for its bdf parsing
 functionality.
 
@@ -11,6 +11,7 @@ functionality.
 # Imports
 # =============================================================================
 import numpy as np
+import itertools as it
 import tacs.TACS, tacs.elements, tacs.constitutive
 from pyNastran.bdf.bdf import read_bdf
 from .utilities import BaseUI
@@ -65,8 +66,8 @@ class pyMeshLoader(BaseUI):
                 # and should not be read in using pytacs elemCallBackFromBDF method
                 self.bdfInfo.missing_properties = True
                 if self.printDebug:
-                    self.TACSWarning('Element ID %d references undefined property ID %d in bdf file. '
-                                'A user-defined elemCalBack function will need to be provided.'% (element_id, element.pid))
+                    self._TACSWarning('Element ID %d references undefined property ID %d in bdf file. '
+                                'A user-defined elemCalBack function will need to be provided.' % (element_id, element.pid))
 
         # Create dictionaries for mapping between tacs and nastran id numbering
         self._updateNastranToTACSDicts()
@@ -154,6 +155,11 @@ class pyMeshLoader(BaseUI):
 
         # Allocate list for user-specified tacs element objects
         self.elemObjects = [None] * elementObjectCounter
+
+        # Total number of nodes used to hold lagrange multiplier variables
+        self.numMultiplierNodes = 0
+        # List to hold ID numbers (TACS ordering) of multiplier nodes added to the problem later
+        self.multiplierNodeIDs = []
 
     def _updateNastranToTACSDicts(self):
         '''
@@ -361,7 +367,7 @@ class pyMeshLoader(BaseUI):
         corresponding to the component groups in componentIDs.
         """
         if self.creator is None:
-            raise self.TACSError("TACS assembler has not been created. "
+            raise self._TACSError("TACS assembler has not been created. "
                         "Assembler must created first by running 'createTACS' method.")
         # Make sure list is flat
         componentIDs = self._flatten(componentIDs)
@@ -374,6 +380,12 @@ class pyMeshLoader(BaseUI):
         # Get the local element IDs corresponding to the object IDs on this processor (if any)
         localElemIDs = self.creator.getElementIdNums(objIDs)
         return list(localElemIDs)
+
+    def getLocalMultiplierNodeIDs(self):
+        """
+        Get the tacs indices of multiplier nodes used to hold lagrange multipliers on this processor.
+        """
+        return self.ownedMultiplierNodeIDs
 
     def getGlobalToLocalElementIDDict(self):
         """
@@ -435,11 +447,16 @@ class pyMeshLoader(BaseUI):
         for massInfo in self.bdfInfo.masses.values():
             self._addTACSMassElement(massInfo, varsPerNode)
 
+        # Check for any nodes that aren't attached to at least one element
+        self._unattachedNodeCheck()
+
         # Setup element connectivity and boundary condition info on root processor
         if self.comm.rank == 0:
             # Set connectivity for all elements
             ptr = np.array(self.elemConnectivityPointer, dtype=np.intc)
-            conn = np.array(self._flatten(self.elemConnectivity), dtype=np.intc)
+            # Flatten nested connectivity list to single list
+            conn = it.chain.from_iterable(self.elemConnectivity)
+            conn = np.array([*conn], dtype=np.intc)
             objectNums = np.array(self.elemObjectNumByElem, dtype=np.intc)
             self.creator.setGlobalConnectivity(self.bdfInfo.nnodes, ptr, conn, objectNums)
 
@@ -510,6 +527,10 @@ class pyMeshLoader(BaseUI):
 
         self.globalToLocalElementIDDict = self.getGlobalToLocalElementIDDict()
 
+        # If any multiplier nodes were added, record their local processor indices
+        localIDs = self.getLocalNodeIDsFromGlobal(self.multiplierNodeIDs, nastranOrdering=False)
+        self.ownedMultiplierNodeIDs = [localID for localID in localIDs if localID >= 0]
+
         return self.assembler
 
     def _isDOFInString(self, constrained_dofs, dof):
@@ -552,7 +573,7 @@ class pyMeshLoader(BaseUI):
             depNodes.append(node)
             depConstrainedDOFs.extend(dofsAsList)
             # add dummy nodes for all lagrange multiplier
-            dummyNodeNum = list(self.bdfInfo.node_ids)[-1] + 1  # Next available node number
+            dummyNodeNum = list(self.bdfInfo.node_ids)[-1] + 1  # Next available nastran node number
             # Add the dummy node coincident to the dependent node in x,y,z
             self.bdfInfo.add_grid(dummyNodeNum, self.bdfInfo.nodes[node].xyz)
             dummyNodes.append(dummyNodeNum)
@@ -561,6 +582,10 @@ class pyMeshLoader(BaseUI):
         nTotalNodes = len(conn)
         # Update Nastran to TACS ID mapping dicts, since we just added new nodes to model
         self._updateNastranToTACSDicts()
+        # Add dummy nodes to lagrange multiplier node list
+        self.numMultiplierNodes += len(dummyNodes)
+        tacsIDs = self.idMap(dummyNodes, self.nastranToTACSNodeIDDict)
+        self.multiplierNodeIDs.extend(tacsIDs)
         # Append RBE information to the end of the element lists
         self.elemConnectivity.append(self.idMap(conn, self.nastranToTACSNodeIDDict))
         self.elemConnectivityPointer.append(self.elemConnectivityPointer[-1] + nTotalNodes)
@@ -584,7 +609,12 @@ class pyMeshLoader(BaseUI):
         dummyNodes = [dummyNodeNum]
         # Update Nastran to TACS ID mapping dicts, since we just added new nodes to model
         self._updateNastranToTACSDicts()
+        # Add dummy node to lagrange multiplier node list
+        self.numMultiplierNodes += len(dummyNodes)
+        tacsIDs = self.idMap(dummyNodes, self.nastranToTACSNodeIDDict)
+        self.multiplierNodeIDs.extend(tacsIDs)
 
+        # Get node and rbe3 weight info
         indepNodes = []
         indepWeights = []
         indepConstrainedDOFs = []
@@ -645,6 +675,34 @@ class pyMeshLoader(BaseUI):
         self.elemObjectNumByElem.append(len(self.elemObjects))
         self.elemObjects.append(massObj)
         return
+
+    def _unattachedNodeCheck(self):
+        """
+        Check for any nodes that aren't attached to element.
+        Notify the user and throw an error if we find any.
+        This must be checked before creating the TACS assembler or a SegFault may occur.
+        """
+        numUnattached = 0
+        if self.comm.rank == 0:
+            # Flatten conectivity to single list
+            flattenedConn = it.chain.from_iterable(self.elemConnectivity)
+            # uniqueify and order all element-attached nodes
+            attachedNodes = set(flattenedConn)
+            # Loop through each node in the bdf and check if it's in the element node set
+            for nastranNodeID in self.bdfInfo.node_ids:
+                tacsNodeID = self.idMap(nastranNodeID, self.nastranToTACSNodeIDDict)
+                if tacsNodeID not in attachedNodes:
+                    if numUnattached < 100:
+                        self._TACSWarning(f'Node ID {nastranNodeID} (Nastran ordering) is not attached to any element in the model. '
+                                         f'Please remove this node from the mesh and try again.')
+                    numUnattached += 1
+
+        # Broadcast number of found unattached nodes
+        numUnattached = self.comm.bcast(numUnattached, root=0)
+        # Raise an error if any unattached nodes were found
+        if numUnattached > 0:
+            raise self._TACSError(f'{numUnattached} unattached node(s) were detected in model. '
+                           f'Please make sure that all nodes are attached to at least one element.')
 
     def isDOFInString(self, dofString, numDOFs):
         """
