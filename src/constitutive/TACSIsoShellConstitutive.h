@@ -113,8 +113,18 @@ class TACSIsoShellConstitutive : public TACSShellConstitutive {
   void evalTangentHeatFlux( int elemIndex, const double pt[],
                             const TacsScalar X[], TacsScalar C[] );
 
+  // Add the derivative of the heat flux
+  void addHeatFluxDVSens( int elemIndex, TacsScalar scale,
+                          const double pt[], const TacsScalar X[],
+                          const TacsScalar grad[], const TacsScalar psi[],
+                          int dvLen, TacsScalar dfdx[] );
+
   // The name of the constitutive object
   const char *getObjectName();
+
+  // Retrieve the design variable for plotting purposes
+  TacsScalar evalDesignFieldValue( int elemIndex, const double pt[],
+                                   const TacsScalar X[], int index );
 
  private:
   // Material properties class
@@ -124,6 +134,7 @@ class TACSIsoShellConstitutive : public TACSShellConstitutive {
   TacsScalar kcorr; // The shear correction factor
   TacsScalar t, tlb, tub;
   int tNum;
+  TacsScalar ksWeight; // ks weight used in failure calc
 
   // The object name
   static const char *constName;

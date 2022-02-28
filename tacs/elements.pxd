@@ -223,6 +223,24 @@ cdef extern from "TACSShellElementDefs.h":
         TACSTri3ThermalShell(TACSShellTransform*,
                              TACSShellConstitutive*)
 
+cdef extern from "TACSSpringElementTransform.h":
+    cdef cppclass TACSSpringTransform(TACSObject):
+        pass
+
+    cdef cppclass TACSSpringIdentityTransform(TACSSpringTransform):
+        TACSSpringIdentityTransform()
+
+    cdef cppclass TACSSpringRefAxisTransform(TACSSpringTransform):
+        TACSSpringRefAxisTransform(TacsScalar*)
+
+    cdef cppclass TACSSpringRefFrameTransform(TACSSpringTransform):
+        TACSSpringRefFrameTransform(TacsScalar*, TacsScalar*)
+
+cdef extern from "TACSSpringElement.h":
+    cdef cppclass TACSSpringElement(TACSElement):
+        TACSSpringElement(TACSSpringTransform*,
+                          TACSGeneralSpringConstitutive*)
+
 cdef extern from "TACSGibbsVector.h":
     cdef cppclass TACSGibbsVector(TACSObject):
         TACSGibbsVector(TacsScalar, TacsScalar, TacsScalar)
@@ -274,13 +292,17 @@ cdef extern from "TACSKinematicConstraints.h":
         TACSAverageConstraint(TACSRigidBody*, TACSGibbsVector*,
                               TACSRefFrame*, int)
 
-cdef extern from "RigidBodyElement2.h":
-    cdef cppclass RigidBodyElement2(TACSElement):
-        RigidBodyElement2(int, int*, double, double)
+cdef extern from "TACSRBE2.h":
+    cdef cppclass TACSRBE2(TACSElement):
+        TACSRBE2(int, int*, double, double)
 
-cdef extern from "RigidBodyElement3.h":
-    cdef cppclass RigidBodyElement3(TACSElement):
-        RigidBodyElement3(int, int*, double*, int*, double, double)
+cdef extern from "TACSRBE3.h":
+    cdef cppclass TACSRBE3(TACSElement):
+        TACSRBE3(int, int*, double*, int*, double, double)
+
+cdef extern from "TACSMassElement.h":
+    cdef cppclass TACSMassElement(TACSElement):
+        TACSMassElement(TACSGeneralMassConstitutive*)
 
 cdef extern from  "MITC3.h":
     cdef cppclass MITC3(TACSElement):

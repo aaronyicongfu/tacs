@@ -13,6 +13,8 @@
 */
 
 #include "TACSElement3D.h"
+#include "TACSTraction3D.h"
+#include "TACSPressure3D.h"
 #include "TACSElementAlgebra.h"
 
 TACSElement3D::TACSElement3D( TACSElementModel *_model,
@@ -26,6 +28,10 @@ TACSElement3D::~TACSElement3D(){
   basis->decref();
 }
 
+const char* TACSElement3D::getObjectName(){
+  return "TACSElement3D";
+}
+
 // Get the layout properties of the element
 int TACSElement3D::getVarsPerNode(){
   return model->getVarsPerNode();
@@ -37,6 +43,16 @@ int TACSElement3D::getNumNodes(){
 
 int TACSElement3D::getDesignVarsPerNode(){
   return model->getDesignVarsPerNode();
+}
+
+TACSElement* TACSElement3D::createElementTraction( int faceIndex, TacsScalar t[] ){
+  int varsPerNode = getVarsPerNode();
+  return new TACSTraction3D(varsPerNode, faceIndex, basis, t);
+}
+
+TACSElement* TACSElement3D::createElementPressure( int faceIndex, TacsScalar p ){
+  int varsPerNode = getVarsPerNode();
+  return new TACSPressure3D(varsPerNode, faceIndex, basis, p);
 }
 
 ElementLayout TACSElement3D::getLayoutType(){
@@ -680,12 +696,24 @@ void TACSElement3D::addPointQuantityXptSens( int elemIndex,
 
   // Evaluate the derivative of the function with respect to X, Ut, Ux
   TacsScalar dfdX[3], dfdXd[9];
-  TacsScalar dfdUt[3*MAX_VARS_PER_NODE], dfdUx[2*MAX_VARS_PER_NODE];
+  TacsScalar dfdUt[3*MAX_VARS_PER_NODE], dfdUx[3*MAX_VARS_PER_NODE];
   model->evalPointQuantitySens(elemIndex, quantityType, time, n, pt,
                                X, Xd, Ut, Ux, dfdq, dfdX, dfdXd, dfdUt, dfdUx);
 
+  // Scale the derivatives appropriately
+  dfdX[0] *= scale;  dfdX[1] *= scale;  dfdX[2] *= scale;
+
+  for ( int i = 0; i < 9; i++ ){
+    dfdXd[i] *= scale;
+  }
+
+  for ( int i = 0; i < 3*vars_per_node; i++ ){
+    dfdUt[i] *= scale;
+    dfdUx[i] *= scale;
+  }
+
   basis->addFieldGradientXptSens(n, pt, Xpts, vars_per_node, Xd, J, Ud,
-                                 dfddetXd, dfdX, dfdXd, NULL, dfdUx, dfdXpts);
+                                 scale*dfddetXd, dfdX, dfdXd, NULL, dfdUx, dfdXpts);
 }
 
 /*

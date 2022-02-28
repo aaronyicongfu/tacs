@@ -8,7 +8,7 @@ Create a uniform plate of quadratic triangles under uniform edge loading
 and test KSFailure, StructuralMass, and Compliance functions and sensitivities
 '''
 
-FUNC_REFS = np.array([1.480192931064857, 25700.0, 17567887.317833334])
+FUNC_REFS = np.array([2.007845956565272, 25700.0, 17567887.317833334])
 
 # Length of plate in x/y direction
 Lx = 10.0
@@ -27,7 +27,10 @@ Nxy = -175e5
 ksweight = 10.0
 
 class ProblemTest(StaticTestCase.StaticTest):
-    def setup_assembler(self, dtype):
+
+    N_PROCS = 2  # this is how many MPI processes to use for this TestCase.
+
+    def setup_assembler(self, comm, dtype):
         """
         Setup mesh and tacs assembler for problem we will be testing.
         """
@@ -41,9 +44,6 @@ class ProblemTest(StaticTestCase.StaticTest):
             self.rtol = 1e-2
             self.atol = 1e-4
             self.dh = 1e-6
-
-        # Set the MPI communicator
-        comm = MPI.COMM_WORLD
 
         # Create the stiffness object
         props = constitutive.MaterialProperties(rho=2570.0, E=70e9, nu=0.3, ys=350e6)
@@ -177,7 +177,7 @@ class ProblemTest(StaticTestCase.StaticTest):
         """
         Create a list of functions to be tested and their reference values for the problem
         """
-        func_list = [functions.KSFailure(assembler, ksweight),
+        func_list = [functions.KSFailure(assembler, ksWeight=ksweight, safetyFactor=1.5),
                      functions.StructuralMass(assembler),
                      functions.Compliance(assembler)]
         return func_list, FUNC_REFS

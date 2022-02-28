@@ -69,20 +69,34 @@ cdef class Compliance(Function):
         return
 
 cdef class AverageTemperature(Function):
-    def __cinit__(self, Assembler assembler, TacsScalar _volume=1.0):
+    def __cinit__(self, Assembler assembler, **kwargs):
         """
         Wrap the function AverageTemperature
         """
-        self.ptr = new TACSAverageTemperature(assembler.ptr, _volume)
+        cdef double volume = 1.0
+
+        if 'volume' in kwargs:
+            volume = kwargs['volume']
+
+        self.ptr = new TACSAverageTemperature(assembler.ptr, volume)
         self.ptr.incref()
         return
 
 cdef class KSTemperature(Function):
     cdef TACSKSTemperature *kstptr
-    def __cinit__(self, Assembler assembler, double ksWeight, double alpha=1.0):
+    def __cinit__(self, Assembler assembler, **kwargs):
         """
         Wrap the function KSTemperature
         """
+        cdef double ksWeight = 80.0
+        cdef double alpha = 1.0
+
+        if 'ksWeight' in kwargs:
+            ksWeight = kwargs['ksWeight']
+
+        if 'alpha' in kwargs:
+            alpha = kwargs['alpha']
+
         self.kstptr = new TACSKSTemperature(assembler.ptr, ksWeight, alpha)
         self.ptr = self.kstptr
         self.ptr.incref()
@@ -107,11 +121,24 @@ cdef class KSTemperature(Function):
 
 cdef class KSFailure(Function):
     cdef TACSKSFailure *ksptr
-    def __cinit__(self, Assembler assembler, double ksWeight, double alpha=1.0):
+    def __cinit__(self, Assembler assembler, **kwargs):
         """
         Wrap the function KSFailure
         """
-        self.ksptr = new TACSKSFailure(assembler.ptr, ksWeight, alpha)
+        cdef double ksWeight = 80.0
+        cdef double alpha = 1.0
+        cdef double safetyFactor = 1.0
+
+        if 'ksWeight' in kwargs:
+            ksWeight = kwargs['ksWeight']
+
+        if 'alpha' in kwargs:
+            alpha = kwargs['alpha']
+
+        if 'safetyFactor' in kwargs:
+            safetyFactor = kwargs['safetyFactor']
+
+        self.ksptr = new TACSKSFailure(assembler.ptr, ksWeight, alpha, safetyFactor)
         self.ptr = self.ksptr
         self.ptr.incref()
         return
@@ -125,6 +152,51 @@ cdef class KSFailure(Function):
             self.ksptr.setKSFailureType(PNORM_FAILURE_DISCRETE)
         elif ftype == 'pnorm-continuous':
             self.ksptr.setKSFailureType(PNORM_FAILURE_CONTINUOUS)
+        return
+
+    def setParameter(self, double ksparam):
+        self.ksptr.setParameter(ksparam)
+
+cdef class KSDisplacement(Function):
+    cdef TACSKSDisplacement *ksptr
+    def __cinit__(self, Assembler assembler, **kwargs):
+        """
+        Wrap the function KSDisplacement
+        """
+        cdef double ksWeight = 80.0
+        cdef double alpha = 1.0
+        cdef double d[3]
+
+        if 'ksWeight' in kwargs:
+            ksWeight = kwargs['ksWeight']
+
+        if 'alpha' in kwargs:
+            alpha = kwargs['alpha']
+
+        if 'direction' in kwargs:
+            dir = kwargs['direction']
+            # Check if dir is a list or numpy array
+            if isinstance(dir, list) or isinstance(dir, np.ndarray):
+                dim = min(3, len(dir))
+                for i in range(dim):
+                    d[i] = dir[i]
+            else:
+                d[0] = d[1] = d[2] = 0.0
+
+        self.ksptr = new TACSKSDisplacement(assembler.ptr, ksWeight, d, alpha)
+        self.ptr = self.ksptr
+        self.ptr.incref()
+        return
+
+    def setKSDisplacementType(self, ftype='discrete'):
+        if ftype == 'discrete':
+            self.ksptr.setKSDisplacementType(KS_DISPLACEMENT_DISCRETE)
+        elif ftype == 'continuous':
+            self.ksptr.setKSDisplacementType(KS_DISPLACEMENT_CONTINUOUS)
+        elif ftype == 'pnorm-discrete':
+            self.ksptr.setKSDisplacementType(PNORM_DISPLACEMENT_DISCRETE)
+        elif ftype == 'pnorm-continuous':
+            self.ksptr.setKSDisplacementType(PNORM_DISPLACEMENT_CONTINUOUS)
         return
 
     def setParameter(self, double ksparam):

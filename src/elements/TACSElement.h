@@ -71,6 +71,13 @@ class TACSElement : public TACSObject {
     return "TACSElement";
   }
 
+  /*
+    Allow users to set default finite difference order for real analysis
+
+    @param order The requested finite difference order
+  */
+  static void setFiniteDifferenceOrder( int order );
+
   /**
     Get the number of degrees of freedom per node for this element
 
@@ -180,6 +187,24 @@ class TACSElement : public TACSObject {
     @return The TACSElementModel class associated with this element. Possibly NULL.
   */
   virtual TACSElementModel* getElementModel(){
+    return NULL;
+  }
+
+  /**
+    Create element traction class
+
+    @return The TACSElement traction class associated with this element. Possibly NULL.
+  */
+  virtual TACSElement* createElementTraction( int faceIndex, TacsScalar t[] ){
+    return NULL;
+  }
+
+  /**
+    Create element pressure class
+
+    @return The TACSElement pressure class associated with this element. Possibly NULL.
+  */
+  virtual TACSElement* createElementPressure( int faceIndex, TacsScalar p ){
     return NULL;
   }
 
@@ -747,6 +772,8 @@ class TACSElement : public TACSObject {
 
  private:
   int componentNum;
+  // Defines order of finite differencing method
+  static int fdOrder;
 };
 
 #endif // TACS_ELEMENT_H

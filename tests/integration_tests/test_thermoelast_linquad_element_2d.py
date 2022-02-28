@@ -21,7 +21,7 @@ from static_analysis_base_test import StaticTestCase
   This test is based on the "tutorial" script under the examples directory.
 '''
 
-FUNC_REFS = np.array([1.2236584994155062, 2700.0, 60.926923346719704, 114.44780151309602])
+FUNC_REFS = np.array([0.981072186947658, 2700.0, 30.508623116027273, 56.92510895125915, 1.377153264551044])
 
 # Length of plate in x/y direction
 Lx = 1.0
@@ -35,7 +35,10 @@ ny = 10
 ksweight = 10.0
 
 class ProblemTest(StaticTestCase.StaticTest):
-    def setup_assembler(self, dtype):
+
+    N_PROCS = 2  # this is how many MPI processes to use for this TestCase.
+
+    def setup_assembler(self, comm, dtype):
         """
         Setup mesh and tacs assembler for problem we will be testing.
         """
@@ -50,13 +53,12 @@ class ProblemTest(StaticTestCase.StaticTest):
             self.atol = 1e-4
             self.dh = 1e-8
 
-        # Set the MPI communicator
-        comm = MPI.COMM_WORLD
+        # Get the MPI communicator size
         rank = comm.rank
         size = comm.size
 
         # We know in advance that the number of unknowns per node is
-        # going to be equal to 2 (You can find this value by checking
+        # going to be equal to 3 (You can find this value by checking
         # with element->getVarsPerNode() which returns the number
         # of unknowns per node)
         vars_per_node = 3
@@ -210,7 +212,6 @@ class ProblemTest(StaticTestCase.StaticTest):
         # conditions
         f_array = force_vec.getArray()
         f_array[:] = 6.0
-        assembler.setBCs(force_vec)
 
         # Create dv perturbation dv for doing fd/cs
         dv_pert_array = dv_pert_vec.getArray()
@@ -234,52 +235,10 @@ class ProblemTest(StaticTestCase.StaticTest):
         """
         Create a list of functions to be tested and their reference values for the problem
         """
-        func_list = [functions.KSFailure(assembler, ksweight),
+        func_list = [functions.KSFailure(assembler, ksWeight=ksweight),
                      functions.StructuralMass(assembler),
                      functions.AverageTemperature(assembler),
-                     functions.KSTemperature(assembler, ksweight)]
+                     functions.KSTemperature(assembler, ksWeight=ksweight),
+                     functions.KSDisplacement(assembler, ksWeight=ksweight, direction=[1e3, 1e3])]
         func_list[0].setKSFailureType('continuous')
         return func_list, FUNC_REFS
-
-    '''
-    We have to re-implement the linear solve routine for this test, 
-    since the base class assumes we are using the applyBCs routine, 
-    but we are actually using setBCs instead to set Dirichilet boundary 
-    conditions. Basically we do the same procedure, but skip the 
-    applyBCs step
-    '''
-
-    def run_solve(self, dv=None, xpts=None):
-        """
-        Run a linear solve at specified design point and return functions of interest
-        """
-        if dv is None:
-            dv = self.dv0
-
-        if xpts is None:
-            xpts = self.xpts0
-
-        # Set the design variables
-        self.assembler.setDesignVars(dv)
-
-        # Set node locations
-        self.assembler.setNodes(xpts)
-
-        # Assemble the stiffness matrix
-        self.assembler.zeroVariables()
-        self.assembler.assembleJacobian(self.alpha, self.beta, self.gamma, self.res0, self.mat)
-        self.pc.factor()
-
-        # add force vector to residual (R = Ku - f)
-        self.res0.axpy(-1.0, self.f)
-
-        # Solve the linear system
-        self.gmres.solve(self.res0, self.ans0)
-        self.ans0.scale(-1.0)
-
-        # Update state variables with solution
-        self.assembler.setVariables(self.ans0)
-
-        func_vals = self.assembler.evalFunctions(self.func_list)
-
-        return np.array(func_vals)

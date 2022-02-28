@@ -509,6 +509,49 @@ cdef class Tri3ThermalShell(Element):
         self.ptr = new TACSTri3ThermalShell(transform.ptr, con.cptr)
         self.ptr.incref()
 
+cdef class SpringTransform:
+    cdef TACSSpringTransform *ptr
+    def __cinit__(self):
+        self.ptr = NULL
+        return
+
+    def __dealloc__(self):
+        if self.ptr != NULL:
+            self.ptr.decref()
+
+cdef class SpringIdentityTransform(SpringTransform):
+    def __cinit__(self):
+        self.ptr = new TACSSpringIdentityTransform()
+        self.ptr.incref()
+
+cdef class SpringRefAxisTransform(SpringTransform):
+    def __cinit__(self, axis):
+        cdef TacsScalar a[3]
+        a[0] = axis[0]
+        a[1] = axis[1]
+        a[2] = axis[2]
+        self.ptr = new TACSSpringRefAxisTransform(a)
+        self.ptr.incref()
+
+cdef class SpringRefFrameTransform(SpringTransform):
+    def __cinit__(self, axis1, axis2):
+        cdef TacsScalar a1[3], a2[3]
+        a1[0] = axis1[0]
+        a1[1] = axis1[1]
+        a1[2] = axis1[2]
+        a2[0] = axis2[0]
+        a2[1] = axis2[1]
+        a2[2] = axis2[2]
+        self.ptr = new TACSSpringRefFrameTransform(a1, a2)
+        self.ptr.incref()
+
+cdef class SpringElement(Element):
+    def __cinit__(self, SpringTransform transform, GeneralSpringConstitutive con):
+        if transform is None:
+            transform = SpringIdentityTransform()
+        self.ptr = new TACSSpringElement(transform.ptr, con.cptr)
+        self.ptr.incref()
+
 cdef class GibbsVector:
     cdef TACSGibbsVector *ptr
     def __cinit__(self, x, y, z):
@@ -555,7 +598,7 @@ cdef class RigidBodyViz:
             self.ptr.decref()
 
 cdef class RBE2(Element):
-    cdef RigidBodyElement2 *cptr
+    cdef TACSRBE2 *cptr
     def __cinit__(self, int num_nodes,
                   np.ndarray[int, ndim=1, mode='c'] constrained_dofs,
                   double C1=1e3, double C2=1e-3):
@@ -567,14 +610,14 @@ cdef class RBE2(Element):
         if len(constrained_dofs) == 6:
             constrained_dofs = np.tile(constrained_dofs, num_dep)
 
-        self.cptr = new RigidBodyElement2(num_nodes, <int*>constrained_dofs.data, C1, C2)
+        self.cptr = new TACSRBE2(num_nodes, <int*>constrained_dofs.data, C1, C2)
         # Increase the reference count to the underlying object
         self.ptr = self.cptr
         self.ptr.incref()
         return
 
 cdef class RBE3(Element):
-    cdef RigidBodyElement3 *cptr
+    cdef TACSRBE3 *cptr
     def __cinit__(self, int num_nodes,
                   np.ndarray[int, ndim=1, mode='c'] dep_constrained_dofs,
                   np.ndarray[double, ndim=1, mode='c'] weights,
@@ -592,8 +635,18 @@ cdef class RBE3(Element):
         if len(indep_constrained_dofs) == 6:
             indep_constrained_dofs = np.tile(indep_constrained_dofs, num_indep)
 
-        self.cptr = new RigidBodyElement3(num_nodes, <int*>dep_constrained_dofs.data,
-                                          <double*>weights.data, <int*>indep_constrained_dofs.data, C1, C2)
+        self.cptr = new TACSRBE3(num_nodes, <int*>dep_constrained_dofs.data,
+                                 <double*>weights.data, <int*>indep_constrained_dofs.data, C1, C2)
+        # Increase the reference count to the underlying object
+        self.ptr = self.cptr
+        self.ptr.incref()
+        return
+
+cdef class MassElement(Element):
+    cdef TACSMassElement *cptr
+    def __cinit__(self, GeneralMassConstitutive con):
+
+        self.cptr = new TACSMassElement(con.cptr)
         # Increase the reference count to the underlying object
         self.ptr = self.cptr
         self.ptr.incref()

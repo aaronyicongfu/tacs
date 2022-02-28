@@ -13,6 +13,8 @@
 */
 
 #include "TACSElement2D.h"
+#include "TACSTraction2D.h"
+#include "TACSPressure2D.h"
 #include "TACSElementAlgebra.h"
 
 TACSElement2D::TACSElement2D( TACSElementModel *_model,
@@ -49,6 +51,16 @@ TACSElementBasis* TACSElement2D::getElementBasis(){
 
 TACSElementModel* TACSElement2D::getElementModel(){
   return model;
+}
+
+TACSElement* TACSElement2D::createElementTraction( int faceIndex, TacsScalar t[] ){
+  int varsPerNode = getVarsPerNode();
+  return new TACSTraction2D(varsPerNode, faceIndex, basis, t);
+}
+
+TACSElement* TACSElement2D::createElementPressure( int faceIndex, TacsScalar p ){
+  int varsPerNode = getVarsPerNode();
+  return new TACSPressure2D(varsPerNode, faceIndex, basis, p);
 }
 
 int TACSElement2D::getNumQuadraturePoints(){
@@ -684,8 +696,23 @@ void TACSElement2D::addPointQuantityXptSens( int elemIndex,
   model->evalPointQuantitySens(elemIndex, quantityType, time, n, pt,
                                X, Xd, Ut, Ux, dfdq, dfdX, dfdXd, dfdUt, dfdUx);
 
+  // Scale the derivatives appropriately
+  dfdX[0] *= scale;  dfdX[1] *= scale;  dfdX[2] *= scale;
+
+  for ( int i = 0; i < 6; i++ ){
+    dfdXd[i] *= scale;
+  }
+
+  for ( int i = 0; i < 3*vars_per_node; i++ ){
+    dfdUt[i] *= scale;
+  }
+
+  for ( int i = 0; i < 2*vars_per_node; i++ ){
+    dfdUx[i] *= scale;
+  }
+
   basis->addFieldGradientXptSens(n, pt, Xpts, vars_per_node, Xd, J, Ud,
-                                 dfddetXd, dfdX, dfdXd, NULL, dfdUx, dfdXpts);
+                                 scale*dfddetXd, dfdX, dfdXd, NULL, dfdUx, dfdXpts);
 }
 
 /*

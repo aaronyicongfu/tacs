@@ -8,7 +8,7 @@ Create a cantilevered beam of linear quad shells under a tip shear load
 and test KSFailure, StructuralMass, and Compliance functions and sensitivities
 '''
 
-FUNC_REFS = np.array([84.72676760968147, 2570.0, 1.70202700928821e+9])
+FUNC_REFS = np.array([84.73369920062832, 2570.0, 1.70202700928821e+9, 299.56673737166255])
 
 # Length of plate in x/y direction
 Lx = 10.0
@@ -25,7 +25,8 @@ Qx = 5e6
 ksweight = 10.0
 
 class ProblemTest(StaticTestCase.StaticTest):
-    def setup_assembler(self, dtype):
+    N_PROCS = 2  # this is how many MPI processes to use for this TestCase.
+    def setup_assembler(self, comm, dtype):
         """
         Setup mesh and tacs assembler for problem we will be testing.
         """
@@ -36,12 +37,9 @@ class ProblemTest(StaticTestCase.StaticTest):
             self.atol = 1e-8
             self.dh = 1e-50
         else:
-            self.rtol = 1e-1
+            self.rtol = 2e-1
             self.atol = 1e-4
-            self.dh = 1e-7
-
-        # Set the MPI communicator
-        comm = MPI.COMM_WORLD
+            self.dh = 1e-5
 
         # Create the stiffness object
         props = constitutive.MaterialProperties(rho=2570.0, E=70e9, nu=0.3, ys=350e6)
@@ -127,14 +125,13 @@ class ProblemTest(StaticTestCase.StaticTest):
 
         # Create temporary state variable vec for doing fd/cs
         ans_pert_array = ans_pert_vec.getArray()
-        # Define perturbation array that uniformly moves all nodes on right edge of plate to the right
+        # Define perturbation array that uniformly moves all nodes on right edge of plate to upward
         ans_pert_array = ans_pert_array.reshape(local_num_nodes, vars_per_node)
         ans_pert_array[local_x == Lx, 2] = 1.0
 
         # Define perturbation array that uniformly moves all nodes on right edge of plate to the right
         xpts_pert_array = xpts_pert_vec.getArray()
         xpts_pert_array = xpts_pert_array.reshape(local_num_nodes, 3)
-        # Define perturbation array that uniformly moves all nodes on right edge of plate to the right
         xpts_pert_array[local_x == Lx, 0] = 1.0
 
         return
@@ -143,7 +140,8 @@ class ProblemTest(StaticTestCase.StaticTest):
         """
         Create a list of functions to be tested and their reference values for the problem
         """
-        func_list = [functions.KSFailure(assembler, ksweight),
+        func_list = [functions.KSFailure(assembler, ksWeight=ksweight),
                      functions.StructuralMass(assembler),
-                     functions.Compliance(assembler)]
+                     functions.Compliance(assembler),
+                     functions.KSDisplacement(assembler, ksWeight=ksweight, direction=[0.0, 0.0, 1.0])]
         return func_list, FUNC_REFS

@@ -56,6 +56,8 @@ cdef extern from "TACSElementTypes.h":
         TACS_PLANE_STRESS_ELEMENT
         TACS_SOLID_ELEMENT
         TACS_RIGID_ELEMENT
+        TACS_MASS_ELEMENT
+        TACS_SPRING_ELEMENT
 
     enum ElementLayout:
         TACS_LAYOUT_NONE
@@ -356,6 +358,8 @@ cdef extern from "TACSElement.h":
     cdef cppclass TACSElement(TACSObject):
         void setComponentNum(int)
         int getComponentNum()
+        @staticmethod
+        void setFiniteDifferenceOrder(int)
         int getVarsPerNode()
         int getNumNodes()
         int getNumVariables()
@@ -365,6 +369,8 @@ cdef extern from "TACSElement.h":
         int getDesignVarRange(int, int, TacsScalar*, TacsScalar*)
         TACSElementBasis* getElementBasis()
         TACSElementModel* getElementModel()
+        TACSElement* createElementTraction(int, TacsScalar*)
+        TACSElement* createElementPressure(int, TacsScalar)
 
 cdef class Element:
     cdef TACSElement *ptr
@@ -651,7 +657,8 @@ cdef extern from "TACSCreator.h":
                                    int *_elem_node_conn,
                                    int *_elem_id_nums )
         void setBoundaryConditions(int _num_bcs, int *_bc_nodes,
-                                   int *_bc_vars, int *_bc_ptr)
+                                   int *_bc_vars, int *_bc_ptr,
+                                   TacsScalar *_bc_vals)
         void setDependentNodes(int num_dep_nodes,
                                int *_dep_node_ptr,
                                int *_dep_node_conn,
@@ -664,6 +671,7 @@ cdef extern from "TACSCreator.h":
         int getElementPartition(const int **)
         TACSAssembler *createTACS()
         int getNodeNums(const int**)
+        int getElementIdNums(int, int *, int **)
         void getAssemblerNodeNums(TACSAssembler*, int, const int*,
                                   int*, int**)
 
@@ -733,7 +741,8 @@ cdef extern from "TACSIntegrator.h":
         void setOutputFrequency(int write_freq)
         void setFH5(TACSToFH5 *_f5)
         void writeSolution(const_char *filename, int format)
-        void writeSolutionToF5(int step_num)
+        void writeSolutionToF5();
+        void writeStepToF5(int step_num);
 
         int getNumTimeSteps()
         void writeRawSolution(const_char *name, int format_flag)

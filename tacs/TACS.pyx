@@ -48,6 +48,8 @@ BEAM_OR_SHELL_ELEMENT = TACS_BEAM_OR_SHELL_ELEMENT
 PLANE_STRESS_ELEMENT = TACS_PLANE_STRESS_ELEMENT
 SOLID_ELEMENT = TACS_SOLID_ELEMENT
 RIGID_ELEMENT = TACS_RIGID_ELEMENT
+MASS_ELEMENT = TACS_MASS_ELEMENT
+SPRING_ELEMENT = TACS_SPRING_ELEMENT
 
 # Import the element matrix types
 STIFFNESS_MATRIX = TACS_STIFFNESS_MATRIX
@@ -239,9 +241,21 @@ cdef class Element:
         if self.ptr:
             self.ptr.decref()
 
+    def getObjectName(self):
+        cdef bytes py_string
+        if self.ptr:
+            py_string = self.ptr.getObjectName()
+            return convert_bytes_to_str(py_string)
+        return None
+
     def setComponentNum(self, int comp_num):
         if self.ptr:
             self.ptr.setComponentNum(comp_num)
+        return
+
+    @classmethod
+    def setFiniteDifferenceOrder(cls, int order):
+        TACSElement.setFiniteDifferenceOrder(order)
         return
 
     def getNumNodes(self):
@@ -267,6 +281,22 @@ cdef class Element:
     def getElementBasis(self):
         if self.ptr:
             return _init_ElementBasis(self.ptr.getElementBasis())
+        return None
+
+    def createElementTraction(self, int faceIndex, np.ndarray[TacsScalar, ndim=1] trac):
+        cdef TACSElement *tracElem = NULL
+        if self.ptr:
+            tracElem = self.ptr.createElementTraction(faceIndex, <TacsScalar*>trac.data)
+            if tracElem != NULL:
+                return _init_Element(tracElem)
+        return None
+
+    def createElementPressure(self, int faceIndex, TacsScalar p):
+        cdef TACSElement *pressElem = NULL
+        if self.ptr:
+            pressElem = self.ptr.createElementPressure(faceIndex, p)
+            if pressElem != NULL:
+                return _init_Element(pressElem)
         return None
 
     def getDesignVarsPerNode(self):
@@ -370,6 +400,13 @@ cdef class Constitutive:
     def __dealloc__(self):
         if self.ptr:
             self.ptr.decref()
+
+    def getObjectName(self):
+        cdef bytes py_string
+        if self.ptr:
+            py_string = self.ptr.getObjectName()
+            return convert_bytes_to_str(py_string)
+        return None
 
     def getNumStresses(self):
         if self.ptr:
@@ -815,6 +852,15 @@ cdef class Pc:
         cdef int reorder = 1
         cdef TACSParallelMat *p_ptr = NULL
         cdef TACSSchurMat *sc_ptr = NULL
+
+        if 'lev_fill' in kwargs:
+            lev_fill = kwargs['lev_fill']
+
+        if 'ratio_fill' in kwargs:
+            fill = kwargs['ratio_fill']
+
+        if 'reorder' in kwargs:
+            reorder = kwargs['reorder']
 
         if mat is not None:
             p_ptr = _dynamicParallelMat(mat.ptr)
@@ -1896,7 +1942,10 @@ cdef class Assembler:
             raise MemoryError()
 
         for i in range(len(funclist)):
-            funcs[i] = (<Function>funclist[i]).ptr
+            if funclist[i] is not None:
+                funcs[i] = (<Function>funclist[i]).ptr
+            else:
+                funcs[i] = NULL
 
         # Allocate the numpy array of function values
         cdef np.ndarray fvals = np.zeros(len(funclist), dtype)
@@ -1926,7 +1975,10 @@ cdef class Assembler:
         funcs = <TACSFunction**>malloc(num_funcs*sizeof(TACSFunction*))
         dfdx = <TACSBVec**>malloc(num_funcs*sizeof(TACSBVec*))
         for i in range(num_funcs):
-            funcs[i] = (<Function>funclist[i]).ptr
+            if funclist[i] is not None:
+                funcs[i] = (<Function>funclist[i]).ptr
+            else:
+                funcs[i] = NULL
             dfdx[i] = (<Vec>dfdxlist[i]).ptr
 
         # Evaluate the derivative of the functions
@@ -1961,7 +2013,10 @@ cdef class Assembler:
         funcs = <TACSFunction**>malloc(num_funcs*sizeof(TACSFunction*))
         dfdu = <TACSBVec**>malloc(num_funcs*sizeof(TACSBVec*))
         for i in range(num_funcs):
-            funcs[i] = (<Function>funclist[i]).ptr
+            if funclist[i] is not None:
+                funcs[i] = (<Function>funclist[i]).ptr
+            else:
+                funcs[i] = NULL
             dfdu[i] = (<Vec>dfdulist[i]).ptr
 
         # Evaluate the derivative of the functions
@@ -1990,7 +2045,10 @@ cdef class Assembler:
         funcs = <TACSFunction**>malloc(num_funcs*sizeof(TACSFunction*))
         dfdX = <TACSBVec**>malloc(num_funcs*sizeof(TACSBVec*))
         for i in range(num_funcs):
-            funcs[i] = (<Function>funclist[i]).ptr
+            if funclist[i] is not None:
+                funcs[i] = (<Function>funclist[i]).ptr
+            else:
+                funcs[i] = NULL
             dfdX[i] = (<Vec>dfdXlist[i]).ptr
 
         # Evaluate the derivative of the functions
@@ -2514,19 +2572,24 @@ cdef class Creator:
 
     def setBoundaryConditions(self,
                               np.ndarray[int, ndim=1, mode='c'] nodes,
-                              np.ndarray[int, ndim=1, mode='c'] ptr=None,
-                              np.ndarray[int, ndim=1, mode='c'] bcvars=None):
+                              np.ndarray[int, ndim=1, mode='c'] bcptr=None,
+                              np.ndarray[int, ndim=1, mode='c'] bcvars=None,
+                              np.ndarray[TacsScalar, ndim=1, mode='c'] bcvals=None):
         """Set the boundary conditions"""
         cdef int num_bcs = nodes.shape[0]
-        if ptr is not None and bcvars is not None:
-            self.ptr.setBoundaryConditions(num_bcs,
-                                           <int*>nodes.data,
-                                           <int*>ptr.data,
-                                           <int*>bcvars.data)
-        else:
-            self.ptr.setBoundaryConditions(num_bcs,
-                                           <int*>nodes.data,
-                                           NULL, NULL)
+        cdef int* ptr = NULL
+        cdef int* vars = NULL
+        cdef TacsScalar* vals = NULL
+
+        if bcptr is not None:
+            ptr = <int*>bcptr.data
+        if bcvars is not None:
+            vars = <int*>bcvars.data
+        if bcvals is not None:
+            vals = <TacsScalar*>bcvals.data
+
+        self.ptr.setBoundaryConditions(num_bcs, <int*>nodes.data,
+                                       ptr, vars, vals)
         return
 
     def setDependentNodes(self, np.ndarray[int, ndim=1, mode='c'] dep_ptr,
@@ -2577,6 +2640,26 @@ cdef class Creator:
 
     def createTACS(self):
         return _init_Assembler(self.ptr.createTACS())
+
+    def getElementIdNums(self, np.ndarray[int, ndim=1, mode='c'] elem_ids=None):
+        cdef int num_ids = 0
+        cdef int *ids = NULL
+        cdef int *elem_nums = NULL
+        cdef int num_elems = 0
+
+        # If the array of ids exists, set the correct pointers/shapes
+        if elem_ids is not None:
+            num_ids = elem_ids.shape[0]
+            ids = <int*>elem_ids.data
+        num_elems = self.ptr.getElementIdNums(num_ids, ids, &elem_nums)
+
+        cdef np.ndarray array = np.zeros(num_elems, dtype=np.intc)
+        for i in range(num_elems):
+            array[i] = elem_nums[i]
+
+        # Free the array from C++
+        deleteArray(elem_nums)
+        return array
 
     def getAssemblerNodeNums(self, Assembler assembler,
                         np.ndarray[int, ndim=1, mode='c'] nodes=None):
@@ -3095,10 +3178,10 @@ cdef class Integrator:
         cdef TACSFunction **funcs
         funcs = <TACSFunction**>malloc(len(funclist)*sizeof(TACSFunction*))
         for i in range(len(funclist)):
-            if funclist[i] is None:
-                funcs[i] = NULL
-            else:
+            if funclist[i] is not None:
                 funcs[i] = (<Function>funclist[i]).ptr
+            else:
+                funcs[i] = NULL
 
         # Allocate the numpy array of function values
         cdef np.ndarray fvals = np.zeros(len(funclist), dtype)
@@ -3246,6 +3329,14 @@ cdef class Integrator:
     def writeRawSolution(self, fname, int format_flag=2):
         cdef char *filename = convert_to_chars(fname)
         self.ptr.writeRawSolution(filename, format_flag)
+        return
+
+    def writeStepToF5(self, int step_num):
+        self.ptr.writeStepToF5(step_num)
+        return
+
+    def writeSolutionToF5(self):
+        self.ptr.writeSolutionToF5()
         return
 
     def persistStates(self, int step_num, prefix=''):

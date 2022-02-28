@@ -65,11 +65,25 @@ cdef extern from "TACSKSFailure.h":
         PNORM_FAILURE_CONTINUOUS"TACSKSFailure::PNORM_CONTINUOUS"
 
     cdef cppclass TACSKSFailure(TACSFunction):
-        TACSKSFailure(TACSAssembler*, double, double)
+        TACSKSFailure(TACSAssembler*, double, double, double)
         void setKSFailureType(KSFailureType ftype)
         double getParameter()
         void setParameter(double)
         void setMaxFailOffset(TacsScalar)
+
+cdef extern from "TACSKSDisplacement.h":
+    enum KSDisplacementType"TACSKDisplacement::KSDisplacementType":
+        KS_DISPLACEMENT_DISCRETE"TACSKSDisplacement::DISCRETE"
+        KS_DISPLACEMENT_CONTINUOUS"TACSKSDisplacement::CONTINUOUS"
+        PNORM_DISPLACEMENT_DISCRETE"TACSKSDisplacement::PNORM_DISCRETE"
+        PNORM_DISPLACEMENT_CONTINUOUS"TACSKSDisplacement::PNORM_CONTINUOUS"
+
+    cdef cppclass TACSKSDisplacement(TACSFunction):
+        TACSKSDisplacement(TACSAssembler*, double, const double*, double)
+        void setKSDisplacementType(KSDisplacementType ftype)
+        double getParameter()
+        void setParameter(double)
+        void setMaxDispOffset(TacsScalar)
 
 cdef extern from "TACSInducedFailure.h":
     enum InducedNormType"TACSInducedFailure::InducedNormType":
